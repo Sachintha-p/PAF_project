@@ -1,38 +1,58 @@
 package com.smartcampus.service.impl;
 
+import com.smartcampus.exception.ResourceNotFoundException;
 import com.smartcampus.model.dto.UserResponse;
+import com.smartcampus.model.entity.User;
 import com.smartcampus.model.enums.Role;
+import com.smartcampus.repository.UserRepository;
 import com.smartcampus.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserServiceImpl implements UserService {
 
+    private final UserRepository userRepository;
+
     @Override
     public UserResponse getCurrentUser(String email) {
-        // TODO: Implement user fetching logic mapped to DTO
         log.info("Fetching current user for: {}", email);
-        return new UserResponse();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        
+        return mapToResponse(user);
     }
 
     @Override
     public List<UserResponse> getAllUsers() {
-        // TODO: Implement fetch all users
-        log.info("Fetching all users");
-        return Collections.emptyList();
+        return userRepository.findAll().stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
     @Override
     public UserResponse changeUserRole(Long id, Role role) {
-        // TODO: Implement updating user role
-        log.info("Updating role for user {} to {}", id, role);
-        return new UserResponse();
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        user.setRole(role);
+        return mapToResponse(userRepository.save(user));
+    }
+
+    private UserResponse mapToResponse(User user) {
+        return UserResponse.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .name(user.getName())
+                .profilePicture(user.getProfilePicture())
+                .role(user.getRole())
+                .provider(user.getProvider())
+                .createdAt(user.getCreatedAt())
+                .build();
     }
 }

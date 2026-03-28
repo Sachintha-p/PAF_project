@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,15 +23,15 @@ public class BookingController {
     private final BookingService bookingService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<BookingResponse>>> getBookings(Authentication auth) {
-        // If ADMIN, fetch all. If user, fetch own. Logic can be handled inside service layer based on role.
-        // For scaffold, we assume the service layer checks the authorities of the context, 
-        // or we use email to fetch own for user.
-        // Since prompt says get own bookings (USER); all bookings (ADMIN), let's defer to service.
-        boolean isAdmin = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    public ResponseEntity<ApiResponse<List<BookingResponse>>> getBookings(Authentication auth, @AuthenticationPrincipal OAuth2User principal) {
+        // THE FIX: Explicitly get the email from the Google principal
+        String email = principal.getAttribute("email");
         
-        List<BookingResponse> bookings = isAdmin ? bookingService.getAllBookings() : bookingService.getMyBookings(auth.getName());
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+        
+        // Use the 'email' variable instead of auth.getName()
+        List<BookingResponse> bookings = isAdmin ? bookingService.getAllBookings() : bookingService.getMyBookings(email);
         return ResponseEntity.ok(ApiResponse.success("Bookings fetched", bookings));
     }
 
@@ -39,8 +41,10 @@ public class BookingController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<BookingResponse>> createBooking(@Valid @RequestBody BookingRequest request, Authentication auth) {
-        return ResponseEntity.ok(ApiResponse.success("Booking requested", bookingService.createBooking(request, auth.getName())));
+    public ResponseEntity<ApiResponse<BookingResponse>> createBooking(@Valid @RequestBody BookingRequest request, @AuthenticationPrincipal OAuth2User principal) {
+        // THE FIX: Extract email for creating a booking
+        String email = principal.getAttribute("email");
+        return ResponseEntity.ok(ApiResponse.success("Booking requested", bookingService.createBooking(request, email)));
     }
 
     @PutMapping("/{id}/approve")
@@ -56,7 +60,9 @@ public class BookingController {
     }
 
     @PutMapping("/{id}/cancel")
-    public ResponseEntity<ApiResponse<BookingResponse>> cancelBooking(@PathVariable Long id, Authentication auth) {
-        return ResponseEntity.ok(ApiResponse.success("Booking cancelled", bookingService.cancelBooking(id, auth.getName())));
+    public ResponseEntity<ApiResponse<BookingResponse>> cancelBooking(@PathVariable Long id, @AuthenticationPrincipal OAuth2User principal) {
+        // THE FIX: Extract email for cancelling a booking
+        String email = principal.getAttribute("email");
+        return ResponseEntity.ok(ApiResponse.success("Booking cancelled", bookingService.cancelBooking(id, email)));
     }
 }

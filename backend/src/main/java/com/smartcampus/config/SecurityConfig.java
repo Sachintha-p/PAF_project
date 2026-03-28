@@ -5,6 +5,7 @@ import com.smartcampus.model.dto.ApiResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -20,24 +21,21 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .cors(cors -> cors.configure(http))
-            .csrf(csrf -> csrf.disable()) // Disabled for REST API
+            .cors(Customizer.withDefaults()) // Uses the corsConfigurationSource bean
+            .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/public/**", "/error", "/login/oauth2/**").permitAll()
                 .anyRequest().authenticated()
             )
-            .oauth2Login(org.springframework.security.config.Customizer.withDefaults())
+            .oauth2Login(oauth2 -> oauth2
+                // Redirect back to your React dashboard after Google login
+                .defaultSuccessUrl("http://localhost:5173/dashboard", true)
+            )
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) -> {
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
                     response.setContentType("application/json");
                     ApiResponse<Void> apiResponse = ApiResponse.error("Unauthorized: " + authException.getMessage());
-                    response.getWriter().write(objectMapper.writeValueAsString(apiResponse));
-                })
-                .accessDeniedHandler((request, response, accessDeniedException) -> {
-                    response.setStatus(HttpStatus.FORBIDDEN.value());
-                    response.setContentType("application/json");
-                    ApiResponse<Void> apiResponse = ApiResponse.error("Forbidden: Access Denied");
                     response.getWriter().write(objectMapper.writeValueAsString(apiResponse));
                 })
             );
