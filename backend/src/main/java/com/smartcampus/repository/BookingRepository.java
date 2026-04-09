@@ -25,4 +25,17 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                                      @Param("startTime") LocalTime startTime,
                                      @Param("endTime") LocalTime endTime,
                                      @Param("statuses") List<BookingStatus> statuses);
+
+    @Query("SELECT CASE WHEN COUNT(b) > 0 THEN true ELSE false END FROM Booking b " +
+           "WHERE b.id <> :bookingId " +
+           "AND b.resource.id = :resourceId " +
+           "AND b.date = :date " +
+           "AND b.status IN (:statuses) " +
+           "AND (b.startTime < :endTime AND b.endTime > :startTime)")
+    boolean existsConflictingBookingExcludingId(@Param("bookingId") Long bookingId,
+                                                @Param("resourceId") Long resourceId,
+                                                @Param("date") LocalDate date,
+                                                @Param("startTime") LocalTime startTime,
+                                                @Param("endTime") LocalTime endTime,
+                                                @Param("statuses") List<BookingStatus> statuses);
 }
