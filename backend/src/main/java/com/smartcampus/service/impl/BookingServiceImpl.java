@@ -1,6 +1,8 @@
 package com.smartcampus.service.impl;
 
 import com.smartcampus.exception.ResourceNotFoundException;
+import com.smartcampus.exception.ConflictException;
+import com.smartcampus.exception.CustomAccessDeniedException;
 import com.smartcampus.model.dto.BookingRequest;
 import com.smartcampus.model.dto.BookingResponse;
 import com.smartcampus.model.entity.Booking;
@@ -57,6 +59,8 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public BookingResponse createBooking(BookingRequest request, String emailOrId) {
+        validateTimeRange(request);
+
         // 1. Check for Scheduling Conflicts!
         boolean isConflict = bookingRepository.existsConflictingBooking(
                 request.getResourceId(),
@@ -67,7 +71,7 @@ public class BookingServiceImpl implements BookingService {
         );
 
         if (isConflict) {
-            throw new RuntimeException("Scheduling Conflict: This resource is already booked for the selected time.");
+            throw new ConflictException("Scheduling Conflict: This resource is already booked for the selected time.");
         }
 
         // FIX: Look up the user by Provider ID first!
@@ -80,7 +84,7 @@ public class BookingServiceImpl implements BookingService {
 
         // 2. Prevent booking OUT_OF_SERVICE resources
         if (resource.getStatus() != null && resource.getStatus().equals("OUT_OF_SERVICE")) {
-            throw new RuntimeException("This resource is currently out of service.");
+            throw new ConflictException("This resource is currently out of service.");
         }
 
         Booking booking = new Booking();
@@ -94,6 +98,63 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.PENDING);
 
         return mapToResponse(bookingRepository.save(booking));
+    }
+
+    @Override
+    public BookingResponse updateBooking(Long id, BookingRequest request, String emailOrId) {
+        validateTimeRange(request);
+
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+
+        User user = resolveUser(emailOrId);
+        validateBookingOwner(booking, user);
+
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new ConflictException("Only pending bookings can be edited.");
+        }
+
+        boolean isConflict = bookingRepository.existsConflictingBookingExcludingId(
+                booking.getId(),
+                request.getResourceId(),
+                request.getDate(),
+                request.getStartTime(),
+                request.getEndTime(),
+                List.of(BookingStatus.APPROVED, BookingStatus.PENDING)
+        );
+        if (isConflict) {
+            throw new ConflictException("Scheduling Conflict: This resource is already booked for the selected time.");
+        }
+
+        Resource resource = resourceRepository.findById(request.getResourceId())
+                .orElseThrow(() -> new ResourceNotFoundException("Resource not found"));
+        if (resource.getStatus() != null && resource.getStatus().equals("OUT_OF_SERVICE")) {
+            throw new ConflictException("This resource is currently out of service.");
+        }
+
+        booking.setResource(resource);
+        booking.setDate(request.getDate());
+        booking.setStartTime(request.getStartTime());
+        booking.setEndTime(request.getEndTime());
+        booking.setPurpose(request.getPurpose());
+        booking.setExpectedAttendees(request.getExpectedAttendees());
+
+        return mapToResponse(bookingRepository.save(booking));
+    }
+
+    @Override
+    public void deleteBooking(Long id, String emailOrId) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+
+        User user = resolveUser(emailOrId);
+        validateBookingOwner(booking, user);
+
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new ConflictException("Only pending bookings can be deleted.");
+        }
+
+        bookingRepository.delete(booking);
     }
 
     @Override
@@ -125,8 +186,30 @@ public class BookingServiceImpl implements BookingService {
     public BookingResponse cancelBooking(Long id, String emailOrId) {
         Booking booking = bookingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
+
+        User user = resolveUser(emailOrId);
+        validateBookingOwner(booking, user);
+
         booking.setStatus(BookingStatus.CANCELLED);
         return mapToResponse(bookingRepository.save(booking));
+    }
+
+    private User resolveUser(String emailOrId) {
+        return userRepository.findByProviderId(emailOrId)
+                .orElseGet(() -> userRepository.findByEmail(emailOrId)
+                        .orElseThrow(() -> new ResourceNotFoundException("User not found")));
+    }
+
+    private void validateBookingOwner(Booking booking, User user) {
+        if (!booking.getUser().getId().equals(user.getId())) {
+            throw new CustomAccessDeniedException("You can only modify your own bookings.");
+        }
+    }
+
+    private void validateTimeRange(BookingRequest request) {
+        if (request.getEndTime() == null || request.getStartTime() == null || !request.getEndTime().isAfter(request.getStartTime())) {
+            throw new ConflictException("End time must be later than start time.");
+        }
     }
 
     private BookingResponse mapToResponse(Booking booking) {

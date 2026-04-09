@@ -27,6 +27,23 @@ public class BookingController {
         return ResponseEntity.ok(ApiResponse.success("Booking created successfully", response));
     }
 
+    // Update my booking
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<BookingResponse>> updateBooking(
+            @PathVariable Long id,
+            @Valid @RequestBody BookingRequest request,
+            Principal principal) {
+        BookingResponse response = bookingService.updateBooking(id, request, principal.getName());
+        return ResponseEntity.ok(ApiResponse.success("Booking updated successfully", response));
+    }
+
+    // Delete my booking
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteBooking(@PathVariable Long id, Principal principal) {
+        bookingService.deleteBooking(id, principal.getName());
+        return ResponseEntity.ok(ApiResponse.success("Booking deleted successfully", null));
+    }
+
     // Get my bookings
     @GetMapping("/my")
     public ResponseEntity<ApiResponse<List<BookingResponse>>> getMyBookings(Principal principal) {
